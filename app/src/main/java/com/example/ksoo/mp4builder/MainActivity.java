@@ -23,15 +23,17 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults)
     {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (grantResults.length > 0)
-        {
+        if (grantResults.length > 0) {
             for (int i=0; i<grantResults.length; ++i)
             {
                 if (grantResults[i] == PackageManager.PERMISSION_DENIED)
@@ -112,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
         videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 25);
         videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 12);
         int videoTrackIndex = muxer.addTrack(videoFormat);
-        ByteBuffer inputBuffer = ByteBuffer.allocate(1024*1024*15);
+//        ByteBuffer inputBuffer = ByteBuffer.allocate(1024*1024*15);
         boolean finished = false;
         String videofilePath = Environment.getExternalStorageDirectory().getPath() + "/" + "video.h264";
         File videoinputFile = new File(videofilePath);
@@ -123,92 +125,56 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
         muxer.start();
-        ByteBuffer bb = ByteBuffer.allocate(1024 * 1024 * 15);
-        byte[] tempBuffer = new byte[1000000];
-        bb.mark();
-        // read all
-        while(true) {
-            try {
-                int bb2 = videoFis.read(tempBuffer, 0, tempBuffer.length);
-                if(bb2 != -1) {
-                    bb.put(tempBuffer, 0, bb2);
-                }
-                else {
-                    break;
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        byte[] tempBuffer = new byte[(int)videoinputFile.length() / 1];
+        int bb2 = 0;
+        try {
+            bb2 = videoFis.read(tempBuffer);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        int fileSize = bb.position();
-        bb.reset();
 
-        // to find 00 00 00 01 sequence.
         int mata[][] = new int[5][256];
         mata[0][0] = 1;
         mata[1][0] = 2;
         mata[2][0] = 3;
+//        mata[2][1] = 4;
         mata[3][1] = 4;
         int step = 0;
-        // find first key frame.
-//        while(bb.hasRemaining()) {
-//            step = mata[step][(bb.get() & 0xFF)];
-//            if(step < 4) {
+        List<Integer> begins = new ArrayList<>();
+        for(int i=0; i<tempBuffer.length; i++) {
+            step = mata[step][(tempBuffer[i] & 0xFF)];
+            if(step < 4) {
 //                step = mata[step][(bb.get() & 0xFF)];
-//            }
-//            else if(step == 4) {
-//                bb.position(bb.position() - 4);
-//                break;
-//            }
-//        }
-        step = 0;
-
+            }
+            else if(step == 4) {
+                begins.add(i - 3);
+                step = 0;
+            }
+        }
+        begins.add(tempBuffer.length);
         int frameIndex = 0;
-        int writeSize = 0;
-        while(!finished) {
-            int nextPosition = -1;
-            int offset = bb.position();
-            bb.get(); bb.get(); bb.get(); bb.get();
-            byte nalUnit = bb.get();
-            while(bb.position() < fileSize) {
-                if(step < 4) {
-                    step = mata[step][(bb.get() & 0xFF)];
-                    nextPosition = bb.position();
-                }
-                else if(step == 4) {
-                    boolean nalVersion = true;
-                    byte g = bb.get();
-                    if((g & 0x60) == 0x60) {
-                        nextPosition = bb.position() - 5;
-                        break;
-                    }
-                }
-            }
-//            Log.d("TAG", "" + nextPosition + "..." + fileSize);
-            step = 0;
-            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-            int rNalUnit = (nalUnit & 0x1f);
-            Log.d(",,", String.format("nal value: %d", rNalUnit));
-            bufferInfo.flags = (nalUnit & 0x1f) == 5 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
-            bufferInfo.offset = offset;
-            bufferInfo.size = nextPosition - offset;
-            writeSize += bufferInfo.size;
-            bufferInfo.presentationTimeUs = 137 + (frameIndex++) * 1000 * 1000 / 25;
-            inputBuffer.mark();
-            inputBuffer.position(bufferInfo.offset);
-            int oldLimit = inputBuffer.limit();
-            inputBuffer.limit(bufferInfo.offset + bufferInfo.size);
-            muxer.writeSampleData(videoTrackIndex, inputBuffer, bufferInfo);
-            inputBuffer.reset();
-            inputBuffer.limit(oldLimit);
-            if(nextPosition >= fileSize) {
-                Log.d("TAG", "" + nextPosition + "..." + fileSize);
-                break;
-            }
-            bb.position(nextPosition);
+        for(int i=0; i<begins.size() - 1; i++) {
+            int length = begins.get(i + 1) - begins.get(i);
+            ByteBuffer bb = ByteBuffer.allocate(length);
+            byte[] destArr = new byte[length];
+            System.arraycopy(tempBuffer, begins.get(i), destArr, 0, length);
+            bb.put(destArr);
+            int rNalUnit = tempBuffer[begins.get(i) + 4];
+
+            MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
+//            bi.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME;
+            bi.offset = 0;
+//            bi.flags = 0;
+            bi.flags = (rNalUnit & 0x1f) == 5 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+            bi.presentationTimeUs = (frameIndex++) * 1000 * 1000 / 25;
+
+            bi.size = length;
+            muxer.writeSampleData(videoTrackIndex, bb, bi);
         }
         muxer.stop();
         muxer.release();
+//        if(bb2 != -1) {
+//        }
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
