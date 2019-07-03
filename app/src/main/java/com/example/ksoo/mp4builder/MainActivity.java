@@ -79,12 +79,6 @@ public class MainActivity extends AppCompatActivity {
     public static final int BUFFER_SIZE = 88200;
 
     void r2() {
-//        MediaExtractor me = new MediaExtractor();
-//        try {
-//            me.setDataSource(Environment.getExternalStorageDirectory() + "/" + "video.h264");
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
         MediaMuxer muxer = null;
         File outputFile = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + COMPRESSED_AUDIO_FILE_NAME);
         if (outputFile.exists()) outputFile.delete();
@@ -94,28 +88,13 @@ public class MainActivity extends AppCompatActivity {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
         MediaFormat videoFormat = MediaFormat.createVideoFormat("video/avc", 1280, 720);
-        videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
-        videoFormat.setInteger(MediaFormat.KEY_BIT_RATE, 4000000);
-
         videoFormat.setByteBuffer("csd-0", ByteBuffer.wrap(new byte[] {
                 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F, (byte)0x9D, (byte)0xB8, 0x14, 0x01, 0x6E, (byte)0x9B, (byte)0x80,
                 (byte)0x80, (byte)0x80, (byte)0x81}));
         videoFormat.setByteBuffer("csd-1", ByteBuffer.wrap(new byte[] {
                 0x00, 0x00, 0x00, 0x01, 0x68, (byte)0xCE, 0x3C, (byte)0x80 }));
-
-
-//        videoFormat.setByteBuffer("csd-0", ByteBuffer.wrap(new byte[] {
-//                0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F, (byte)0x9D, (byte)0xA8, 0x14, 0x01, 0x6E, (byte)0x9B, (byte)0x80,
-//                (byte)0x80, (byte)0x80, (byte)0x81}));
-//        videoFormat.setByteBuffer("csd-1", ByteBuffer.wrap(new byte[] {
-//                0x00, 0x00, 0x00, 0x01, 0x68, (byte)0xCE, 0x3C, (byte)0x80 }));
-        videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 25);
-        videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 12);
         int videoTrackIndex = muxer.addTrack(videoFormat);
-//        ByteBuffer inputBuffer = ByteBuffer.allocate(1024*1024*15);
-        boolean finished = false;
         String videofilePath = Environment.getExternalStorageDirectory().getPath() + "/" + "video.h264";
         File videoinputFile = new File(videofilePath);
         FileInputStream videoFis = null;
@@ -125,10 +104,9 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
         muxer.start();
-        byte[] tempBuffer = new byte[(int)videoinputFile.length() / 1];
-        int bb2 = 0;
+        byte[] tempBuffer = new byte[(int)videoinputFile.length()];
         try {
-            bb2 = videoFis.read(tempBuffer);
+            videoFis.read(tempBuffer);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -137,14 +115,12 @@ public class MainActivity extends AppCompatActivity {
         mata[0][0] = 1;
         mata[1][0] = 2;
         mata[2][0] = 3;
-//        mata[2][1] = 4;
         mata[3][1] = 4;
         int step = 0;
         List<Integer> begins = new ArrayList<>();
         for(int i=0; i<tempBuffer.length; i++) {
             step = mata[step][(tempBuffer[i] & 0xFF)];
             if(step < 4) {
-//                step = mata[step][(bb.get() & 0xFF)];
             }
             else if(step == 4) {
                 begins.add(i - 3);
@@ -160,14 +136,10 @@ public class MainActivity extends AppCompatActivity {
             System.arraycopy(tempBuffer, begins.get(i), destArr, 0, length);
             bb.put(destArr);
             int rNalUnit = tempBuffer[begins.get(i) + 4];
-
             MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
-//            bi.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME;
             bi.offset = 0;
-//            bi.flags = 0;
             bi.flags = (rNalUnit & 0x1f) == 5 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
             bi.presentationTimeUs = (frameIndex++) * 1000 * 1000 / 25;
-
             bi.size = length;
             muxer.writeSampleData(videoTrackIndex, bb, bi);
         }
@@ -180,9 +152,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Log.e("TAG", "11111111111");
         int PERMISSION_ALL = 1;
         String[] PERMISSIONS = {Manifest.permission.WRITE_EXTERNAL_STORAGE,
                 Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.RECORD_AUDIO
         };
 
         if(!hasPermissions(this, PERMISSIONS)){
