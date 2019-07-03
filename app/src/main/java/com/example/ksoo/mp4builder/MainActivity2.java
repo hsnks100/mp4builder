@@ -6,7 +6,6 @@ import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 
@@ -15,13 +14,14 @@ import android.widget.Button;
 */
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 
 import static com.example.ksoo.mp4builder.MainActivity.hasPermissions;
 
 public class MainActivity2 extends AppCompatActivity implements View.OnClickListener {
-
-    AudioRecording mAudioRecording;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -37,54 +37,39 @@ public class MainActivity2 extends AppCompatActivity implements View.OnClickList
         }
 
         Button btnStart = findViewById(R.id.btnStart);
-        Button btnStop = findViewById(R.id.btnStop);
-
         btnStart.setOnClickListener(this);
-        btnStop.setOnClickListener(this);
-
-        mAudioRecording = new AudioRecording();
-
     }
 
+    private PcmToAacAndMp4 mRecorder;
+    private OutputStream outputStream(File file) {
+        if (file == null) {
+            throw new RuntimeException("file is null !");
+        }
+        OutputStream outputStream;
+        try {
+            outputStream = new FileOutputStream(file);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(
+                    "could not build OutputStream from" + " this file " + file.getName(), e);
+        }
+        return outputStream;
+    }
     private void startRecording() {
-        AudioRecording.OnAudioRecordListener onRecordListener = new AudioRecording.OnAudioRecordListener() {
-            @Override
-            public void onRecordFinished() {
-                Log.d("MAIN","onFinish ");
-            }
-
-            @Override
-            public void onError(int e) {
-                Log.d("MAIN","onError "+e);
-            }
-
-            @Override
-            public void onRecordingStarted() {
-                Log.d("MAIN","onStart ");
-
-            }
-        };
-
         File filePath = new File(Environment.getExternalStorageDirectory() + "/" + System.currentTimeMillis() + ".aac");
-        mAudioRecording.setOnAudioRecordListener(onRecordListener);
-        mAudioRecording.setFile(filePath);
-        mAudioRecording.startRecording();
-    }
-
-    private void stopRecording() {
-        if( mAudioRecording != null){
-            mAudioRecording.stopRecording(false);
+        try {
+            mRecorder = new PcmToAacAndMp4(outputStream(filePath));
+            mRecorder.run();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
+
 
     @Override
     public void onClick(View view) {
         switch (view.getId()){
             case R.id.btnStart:
                 startRecording();
-                break;
-            case R.id.btnStop:
-                stopRecording();
                 break;
         }
     }
