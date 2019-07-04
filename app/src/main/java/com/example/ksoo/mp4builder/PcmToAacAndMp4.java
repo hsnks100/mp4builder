@@ -16,6 +16,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 /*
 ~ Nilesh Deokar @nieldeokar on 09/17/18 8:11 AM
@@ -46,21 +48,24 @@ public class PcmToAacAndMp4 {
 
         this.mediaCodec.start();
     }
-
+    int videoTrackIndex = 0;
     public void run() {
+
         File outputFile = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + "pcm.mp4");
         if (outputFile.exists()) outputFile.delete();
 
         try {
             muxer = new MediaMuxer(outputFile.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            MediaFormat videoFormat = MediaFormat.createVideoFormat("video/avc", 1280, 720);
+            videoFormat.setByteBuffer("csd-0", ByteBuffer.wrap(new byte[] {
+                    0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F, (byte)0x9D, (byte)0xB8, 0x14, 0x01, 0x6E, (byte)0x9B, (byte)0x80,
+                    (byte)0x80, (byte)0x80, (byte)0x81}));
+            videoFormat.setByteBuffer("csd-1", ByteBuffer.wrap(new byte[] {
+                    0x00, 0x00, 0x00, 0x01, 0x68, (byte)0xCE, 0x3C, (byte)0x80 }));
+            videoTrackIndex = muxer.addTrack(videoFormat);
         } catch (IOException e) {
             e.printStackTrace();
         }
-//        MediaFormat audioFormat = MediaFormat.createAudioFormat("audio/mp4a-latm", SAMPLE_RATE, 1);
-//        audioFormat.setInteger(MediaFormat.KEY_IS_ADTS, 1);
-//        audioFormat.setByteBuffer("csd-0", ByteBuffer.allocate(2).put(new byte[]{(byte) 0x11, (byte)0x90}));
-
-//        audioTrackIndex = muxer.addTrack(audioFormat);
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         ByteBuffer[] codecInputBuffers = mediaCodec.getInputBuffers();
         ByteBuffer[] codecOutputBuffers = mediaCodec.getOutputBuffers();
@@ -87,14 +92,14 @@ public class PcmToAacAndMp4 {
                     ByteBuffer codecBuffer = codecInputBuffers[codecInputBufferIndex];
                     codecBuffer.clear();
 
-                    byte[] tempBuffer = new byte[codecBuffer.capacity()];
+                    byte[] tempAudioBuffer = new byte[codecBuffer.capacity()];
                     int readBytes = 0;
                     try {
-                        readBytes = audioFis.read(tempBuffer, 0, codecBuffer.capacity());
+                        readBytes = audioFis.read(tempAudioBuffer, 0, codecBuffer.capacity());
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                    codecBuffer.put(tempBuffer, offset, readBytes);
+                    codecBuffer.put(tempAudioBuffer, offset, readBytes);
                     timestamp++;
                     if(readBytes < codecBuffer.capacity()) {
                         mediaCodec.queueInputBuffer(codecInputBufferIndex, 0, readBytes,
@@ -145,6 +150,53 @@ public class PcmToAacAndMp4 {
 //                    encodeStart = true;
                         audioTrackIndex = muxer.addTrack(mediaCodec.getOutputFormat());
                         muxer.start();
+                        String videofilePath = Environment.getExternalStorageDirectory().getPath() + "/" + "video.h264";
+                        File videoinputFile = new File(videofilePath);
+                        FileInputStream videoFis = null;
+                        try {
+                            videoFis = new FileInputStream(videoinputFile);
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
+                        }
+                        byte[] tempBuffer = new byte[(int)videoinputFile.length()];
+                        try {
+                            videoFis.read(tempBuffer);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                        int mata[][] = new int[5][256];
+                        mata[0][0] = 1;
+                        mata[1][0] = 2;
+                        mata[2][0] = 3;
+                        mata[3][1] = 4;
+                        int step = 0;
+                        List<Integer> begins = new ArrayList<>();
+                        for(int i=0; i<tempBuffer.length; i++) {
+                            step = mata[step][(tempBuffer[i] & 0xFF)];
+                            if(step < 4) {
+                            }
+                            else if(step == 4) {
+                                begins.add(i - 3);
+                                step = 0;
+                            }
+                        }
+                        begins.add(tempBuffer.length);
+                        int frameIndex = 0;
+                        for(int i=0; i<begins.size() - 1; i++) {
+                            int length = begins.get(i + 1) - begins.get(i);
+                            ByteBuffer bb = ByteBuffer.allocate(length);
+                            byte[] destArr = new byte[length];
+                            System.arraycopy(tempBuffer, begins.get(i), destArr, 0, length);
+                            bb.put(destArr);
+                            int rNalUnit = tempBuffer[begins.get(i) + 4];
+                            MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
+                            bi.offset = 0;
+                            bi.flags = (rNalUnit & 0x1f) == 5 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+                            bi.presentationTimeUs = (frameIndex++) * 1000 * 1000 / 25;
+                            bi.size = length;
+                            muxer.writeSampleData(videoTrackIndex, bb, bi);
+                        }
                     }
                     else if (codecOutputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break;

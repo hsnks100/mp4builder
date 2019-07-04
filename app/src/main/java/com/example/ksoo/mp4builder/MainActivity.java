@@ -69,15 +69,7 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
-
-    public static final String AUDIO_RECORDING_FILE_NAME = "recording.raw"; // Input PCM file
     public static final String COMPRESSED_AUDIO_FILE_NAME = "builder.mp4"; // Output MP4 file
-    public static final String COMPRESSED_AUDIO_FILE_MIME_TYPE = "audio/mp4a-latm";
-    public static final int COMPRESSED_AUDIO_FILE_BIT_RATE = 128000; // 128kbps
-    public static final int SAMPLING_RATE = 16000;
-    public static final int CODEC_TIMEOUT_IN_MS = 5000;
-    public static final int BUFFER_SIZE = 88200;
-
     void r2() {
         MediaMuxer muxer = null;
         File outputFile = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + COMPRESSED_AUDIO_FILE_NAME);
@@ -143,6 +135,8 @@ public class MainActivity extends AppCompatActivity {
             bi.size = length;
             muxer.writeSampleData(videoTrackIndex, bb, bi);
         }
+
+
         muxer.stop();
         muxer.release();
 //        if(bb2 != -1) {
